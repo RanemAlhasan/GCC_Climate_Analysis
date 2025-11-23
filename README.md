@@ -1,154 +1,193 @@
-# MODELING & ANOMALY DETECTION APPROACH
+# GCC Climate Analysis – Full Pipeline, Modeling, and Anomaly Detection
 
-This project uses two main techniques:
+This project performs end-to-end climate data engineering, forecasting, and anomaly detection for GCC countries using Databricks, Spark, and MLflow.
 
-1) Machine Learning for Time-Series Forecasting
-2) Statistical Anomaly Detection (Rolling Mean + Z-Score) 
+It includes:
 
-Both methods are applied on GCC climate data across multiple stations.
+* Complete ETL pipeline (Raw → Bronze → Silver → Gold)
+* Feature engineering for time-series forecasting
+* Machine learning models for temperature and rain prediction
+* Statistical anomaly detection using rolling windows and Z-score
+* Climate visualization per country and per station
+* Model logging, registration, and prediction workflows
 
+# ETL Pipeline (Raw → Bronze → Silver → Gold)
 
-### 1. Machine Learning for Time-Series Forecasting
+## 1. Raw → Bronze
 
-We convert the climate time-series data into a supervised ML problem.<br>
-This is a modern and accurate method used in real-world weather prediction.
+* Ingest raw JSON climate files (GHCN-Daily)
+* Store as Parquet
+* No transformations
 
-#### How it works:
-•⁠  ⁠Input (X): Today’s weather  
-•⁠  ⁠Output (y):Tomorrow’s weather  
+## 2. Bronze → Silver
 
-This allows the model to learn the relationship between past weather and next-day conditions.
+* Clean and standardize weather rows
+* Parse dates and convert types
+* Pivot daily measurements (TMAX, TMIN, PRCP, etc.)
+* Handle missing values
+* Ensure one clean row per station per day
 
+## 3. Silver → Gold
 
-#### Preparing the GOLD dataset
-From the cleaned Silver dataset, we generate ML features:
+Adds all ML feature engineering.
 
-##### Lag Features (yesterday’s values)
-•⁠  ⁠⁠ TMAX_lag1 ⁠  
-•⁠  ⁠⁠ TMIN_lag1 ⁠  
-•⁠  ⁠⁠ PRCP_lag1 ⁠  
+### A. Base Features
 
-These capture short-term weather momentum.
+* PRCP
+* TAVG
+* TMAX
+* TMIN
 
-##### Rolling Averages (weekly trends)
-•⁠  ⁠⁠ TMAX_7d_avg ⁠  
-•⁠  ⁠⁠ TMIN_7d_avg ⁠  
-•⁠  ⁠⁠ TAVG_7d_avg ⁠  
+### B. Prediction Targets
 
-These capture gradual warming/cooling trends.
+* tmax_nextday
+* rain_nextday
 
-##### Targets (what we predict)
-•⁠  ⁠⁠ tmax_nextday ⁠ → Tomorrow’s max temperature (regression)  
-•⁠  ⁠⁠ rain_nextday ⁠ → Will it rain tomorrow? (0/1 classification)
+### C. Lag Features
 
-This transforms the time-series into a clean ML table ready for training.
+* TMAX_lag1, TMAX_lag2, TMAX_lag3
+* TMIN_lag1
+* TAVG_lag1
+* PRCP_lag1, PRCP_lag2
 
+### D. Rolling Window Features
 
-#### Models Used
+* TMAX_7d_avg, TMIN_7d_avg, TAVG_7d_avg
+* TMAX_30d_avg, TMIN_30d_avg, TAVG_30d_avg
+* PRCP_30d_sum, PRCP_30d_avg
+* TMAX_30d_std
 
-##### 1) Regression Model — Predicting Temperature
-Model: RandomForestRegressor
+### E. Seasonal and Date Encodings
 
-##### 2) Classification Model — Predicting Rain
-Model: RandomForestClassifier
+* day_of_week
+* month
+* day_of_year
+* sin_day_of_year
+* cos_day_of_year
 
-RandomForest is:
-•⁠  ⁠Simple  
-•⁠  ⁠Fast  
-•⁠  ⁠Accurate  
-•⁠  ⁠Easy to deploy in Azure ML  
+### F. Anomaly Detection Features
 
-#### Training Workflow
-1.⁠ ⁠Load GOLD dataset  
-2.⁠ ⁠Split into training & testing sets (80/20)  
-3.⁠ ⁠Train both models on historical GCC data  
-4.⁠ ⁠Evaluate accuracy  
-6.⁠ ⁠Deploy to Azure ML
+Based on 30-day rolling mean and standard deviation.
 
+```
+tmax_zscore = (TMAX − TMAX_30d_avg) / TMAX_30d_std
+```
 
-### 2. Anomaly Detection (Rolling Mean + Z-Score)
+Flags:
 
-To identify heatwaves, cold spells, or unusual rainfall, we apply a statistical
-anomaly detection approach.<br>
-So we compare each day not to the whole dataset, but to recent days around it.
-
-
-#### Step 1 — Rolling Mean (30 days)
-For each station, we calculate a 30-day rolling:
-•⁠  ⁠Mean  
-•⁠  ⁠Standard deviation  
-
-This represents the “normal” climate for that time of year.
-
-#### Step 2 — Z-Score Calculation
-We compute:
-•⁠  ⁠Z = (value − rolling_mean) / rolling_std
-
-This shows how extreme today’s temperature or rainfall is.
-
-
-#### Step 3 — Flagging Anomalies
-•⁠  ⁠|Z| ≥ 2 → moderate anomaly  
-•⁠  ⁠|Z| ≥ 3 → strong anomaly  
+* is_temp_anomaly
+* is_rain_anomaly
 
 Interpretation:
-•⁠  ⁠High positive Z → Heatwave  
-•⁠  ⁠High negative Z → Cold spell  
-•⁠  ⁠High PRCP Z → Rainfall spike  
 
-These flags are added to the dataset.
+* High positive Z indicates heatwaves
+* High negative Z indicates cold spells
+* Rain anomaly flags extreme rainfall events
+
+The final Gold table contains approximately 32 engineered features per station per day.
+
+# Machine Learning
+
+Two ML models are trained on the Gold dataset.
+
+## 1. Regression Model: Predict Next-Day Temperature
+
+* Algorithm: RandomForestRegressor
+* Predicts tmax_nextday
+* Evaluated using MAE, RMSE, R2
+* Achieved strong predictive performance
+
+## 2. Classification Model: Predict Rain
+
+Rain in GCC is rare, making the dataset highly imbalanced.
+
+Models and methods tested:
+
+* Baseline RandomForestClassifier
+* Class-weight balancing
+* Oversampling
+* XGBoost with imbalance control
+* Probability threshold tuning
+
+Final model: XGBoostClassifier with threshold = 0.3.
+This improved rain detection and recall for rare rainfall signals.
+
+# Training Workflow
+
+1. Load Gold dataset
+2. Split chronologically into training and testing sets
+3. Train regression and classification models
+4. Evaluate using all main performance metrics
+5. Log runs and models using MLflow
+6. Register both models with valid signatures
+7. Load registered versions for prediction
+
+# Anomaly Detection
+
+Anomaly detection is performed using rolling statistics.
+
+## Steps
+
+### 1. Compute 30-day rolling mean and rolling standard deviation
+
+### 2. Compute Z-score
+
+```
+Z = (value − rolling_mean) / rolling_std
+```
+
+### 3. Flag anomalies
+
+* Moderate anomaly: |Z| ≥ 2
+* Strong anomaly: |Z| ≥ 3
+
+### 4. Visualize anomalies
+
+This highlights temperature spikes, cold spells, and unexpected rainfall events.
+
+# Climate Visualization
+
+Time-series visualizations were created for the GCC:
+
+* Qatar
+* UAE
+* Saudi Arabia
+* Oman
+* Bahrain
+* Kuwait
+
+Plots are generated per station and as country-level averages by grouping IDs and ordering by date.
+
+# MLflow Model Management
+
+### Logged
+
+* Parameters
+* Metrics
+* Feature importances
+* Models with signatures (sklearn and XGBoost)
+
+### Registered
+
+* TMAX_Regression_Model
+* Rain_Classifier_Model
 
 
-#### Step 4 — Visualization
-On a line chart:
-•⁠  ⁠Normal days follow the rolling mean  
-•⁠  ⁠Anomalies appear far above or below the band  
-•⁠  ⁠Heatwaves, cold spells, and rain spikes are visually obvious  
+### Loaded
 
-This method is simple, interpretable, and matches the project proposal.
+Both models tested successfully for inference.
 
+# Batch Prediction
 
+After registration:
 
+1. Load Gold dataset
+2. Load registered model
+3. Produce predictions for all rows
+4. Save outputs to:
 
-# Creating the pipeline:
+```
+gold/predictions/
+```
 
-We created a 3-step automated data pipeline in Databricks that takes raw GCC climate data and transforms it into a clean dataset ready for machine-learning.
-
-### 1.⁠ ⁠Raw → Bronze
-
-Loads the raw JSON climate file from the storage account.
-Converts it into Parquet format (faster + optimized).
-No cleaning, no processing — just structured storage.
-
-### 2.⁠ ⁠Bronze → Silver
-
-Cleans and organizes the climate data.
-Fixes date format (YYYYMMDD → real date).
-Scales numeric values (DATA_VALUE / 10).
-Pivots ELEMENT (TMAX, TMIN, TAVG, PRCP...) into columns.
-Removes invalid or irrelevant fields.
-Fills missing values safely using forward/backward fill.
-
-### 3.⁠ ⁠Silver → Gold
-
-Generates all machine-learning features.
-Creates next-day prediction targets:
-tmax_nextday (regression)
-rain_nextday (classification)
-
-### Adds:
-lag features (yesterday’s data)
-rolling averages (7-day)
-date-based features (month, day, week, etc.)
-
-Gold is fully prepared ML dataset.
-
-
-#### Jobs Creation:
-
-<img width="1307" height="774" alt="jobs creaton" src="https://github.com/user-attachments/assets/c86b76fc-b5ad-4f0a-ab63-cdcafb78795b"/>
-
-#### Pipleline Running:
-
-<img width="1305" height="769" alt="pipline creation" src="https://github.com/user-attachments/assets/f1e54a22-9d39-4cd2-9434-c11ec63f0a37" />
-
+5. Use predictions for dashboards or extended analysis

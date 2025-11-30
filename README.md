@@ -7,7 +7,6 @@ It includes:
 * Complete ETL pipeline (Raw → Bronze → Silver → Gold)
 * Feature engineering for time-series forecasting
 * Machine learning models for temperature and rain prediction
-* Statistical anomaly detection using rolling windows and Z-score
 * Climate visualization per country and per station
 * Model logging, registration, and prediction workflows
 
@@ -64,27 +63,6 @@ Adds all ML feature engineering.
 * day_of_year
 * sin_day_of_year
 * cos_day_of_year
-
-### F. Anomaly Detection Features
-
-Based on 30-day rolling mean and standard deviation.
-
-```
-tmax_zscore = (TMAX − TMAX_30d_avg) / TMAX_30d_std
-```
-
-Flags:
-
-* is_temp_anomaly
-* is_rain_anomaly
-
-Interpretation:
-
-* High positive Z indicates heatwaves
-* High negative Z indicates cold spells
-* Rain anomaly flags extreme rainfall events
-
-The final Gold table contains approximately 32 engineered features per station per day.
 
 # Machine Learning
 

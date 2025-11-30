@@ -122,29 +122,6 @@ This improved rain detection and recall for rare rainfall signals.
 6. Register both models with valid signatures
 7. Load registered versions for prediction
 
-# Anomaly Detection
-
-Anomaly detection is performed using rolling statistics.
-
-## Steps
-
-### 1. Compute 30-day rolling mean and rolling standard deviation
-
-### 2. Compute Z-score
-
-```
-Z = (value − rolling_mean) / rolling_std
-```
-
-### 3. Flag anomalies
-
-* Moderate anomaly: |Z| ≥ 2
-* Strong anomaly: |Z| ≥ 3
-
-### 4. Visualize anomalies
-
-This highlights temperature spikes, cold spells, and unexpected rainfall events.
-
 # Climate Visualization
 
 Time-series visualizations were created for the GCC:
@@ -171,7 +148,6 @@ Plots are generated per station and as country-level averages by grouping IDs an
 
 * TMAX_Regression_Model
 * Rain_Classifier_Model
-
 
 ### Loaded
 

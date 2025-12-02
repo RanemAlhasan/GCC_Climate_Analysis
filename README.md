@@ -1,6 +1,6 @@
-# GCC Climate Analysis – Full Pipeline, Modeling, and Anomaly Detection
+# GCC Climate Analysis – Full Pipeline, Modeling
 
-This project performs end-to-end climate data engineering, forecasting, and anomaly detection for GCC countries using Databricks, Spark, and MLflow.
+This project performs climate data engineering and forecasting for GCC countries using Databricks, Spark, and MLflow.
 
 It includes:
 
